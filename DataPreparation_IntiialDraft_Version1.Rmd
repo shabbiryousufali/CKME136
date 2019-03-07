@@ -1,0 +1,196 @@
+CKME 136 Final Project
+Shabbir Yousuf Ali
+Winter 2019
+
+---
+title: "Census Project"
+output: pdf_document
+
+---
+1. Load requied libraries.
+Install package install.packages("caret")
+Install package install.packages("corrplot")
+Install package install.packages('Boruta')
+
+
+```{r library}
+library(ggplot2)
+library(corrplot)
+library(Boruta)
+
+library(randomForest)
+library(ROCR)
+library(caret)
+library(rpart)
+```
+
+2. Load census data.
+```{r census}
+#setwd("c:/temp/cmk136/rawdata")
+setwd("C:/Ryerson/ckme136/project/rawdata")
+loc<-getwd()
+censusdata <- read.csv(file="adult.data",header=TRUE,sep=",", na.string = "?")
+
+#Add header to the columns
+names(censusdata) <- c('age',
+    'workclass',
+    'fnlwgt',
+    'education',
+    'education-num',
+    'marital-status',
+    'occupation',
+    'relationship',
+    'race',
+    'sex',
+    'capital-gain',
+    'capital-loss',
+    'hours-per-week',
+    'native-country',
+    'income')
+```
+
+2.1. Divide the data into train and test data. 
+```{r}
+inTrain <- createDataPartition(y=censusdata$income, p= 0.75, list=FALSE)
+training <- censusdata[inTrain,]
+testing <- censusdata[-inTrain,]
+```
+
+
+3. Display dimensions, summary of data, names and overall structure of the data.
+
+```{r }
+data <- training
+dim(data)
+nrow(data)
+ncol(data)
+dim(testing)
+summary(data)
+names(data)
+str(data)
+```
+
+
+4. Display Class Distributions.
+```{r}
+# Use the ggplot to find the income distribution <=50K VS >50K based on the training data
+result = summary(data$income)/nrow(data) * 100
+ggplot(data=data,aes(income)) + geom_bar(aes(fill = income), color = "black")
+result 
+```
+
+
+5. Check and remove the missing values.
+
+```{r}
+cat("Missing values in training set:", sum(is.na(data)), "\n")
+na_count <-sapply(data, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count
+nrow(data)
+data <- na.omit(data)
+nrow(data)
+nrow(testing)
+cat("Missing values in testing set:", sum(is.na(testing)), "\n")
+na_count1 <-sapply(testing, function(y) sum(length(which(is.na(y)))))
+na_count1
+testingdata <- na.omit(testing)
+nrow(testingdata)
+
+```
+5.1 Re-factoring the work class, occupation and native country after removing the NA values (exclude levels not required).
+
+```{r}
+
+data$workclass <- factor(data$workclass)
+data$occupation <- factor(data$occupation)
+data$native.country <- factor(data$`native-country`)
+```
+
+5.1 Re-factoring the work class, occupation and native country after removing the NA values (exclude levels not required) for testing data also.
+```{r}
+
+testingdata$workclass <- factor(testingdata$workclass)
+testingdata$occupation <- factor(testingdata$occupation)
+testingdata$native.country <- factor(testingdata$`native-country`)
+```
+
+
+
+6. Statistics of Numerical attributes
+
+```{r}
+
+#find the Min, Max, Mean, Median, 1st and 3rd Quarter of the numerical attributes
+summary(data$age)
+summary(data$`education-num`)
+summary(data$`capital-gain`)
+summary(data$`capital-loss`)
+summary(data$`hours-per-week`)
+
+# statistics of numerical attributes
+summary(data$age)
+sd(data$age)
+hist(data$age, main = "Age Distribution",xlab = "Individual Age" ,col ="blue")
+boxplot(data$age,main="Age ")
+summary(data$education.num)
+sd(data$education.num)
+hist(data$`education-num`,main = "Education Distribution",xlab="Education in Years (yrs)",col = "blue")
+boxplot(data$`education-num`,main="Education")
+summary(data$`capital-gain`)
+sd(data$`capital-gain`)
+hist(data$`capital-gain`,main = "Capital Gain Distribution",xlab="Capital Gain",col = "blue")
+boxplot(data$`capital-gain`,main="Capital Gain")
+summary(data$`capital-loss`)
+sd(data$`capital-loss`)
+hist(log10(data$`capital-loss`),main = "Distribution of Capital Loss",xlab="Capital Loss",col = "blue")
+boxplot(data$`capital-loss`,main="Capital Loss")
+summary(data$`hours-per-week`)
+sd(data$`hours.per.week`)
+hist(data$`hours-per-week`,main = "Distribution of Hours Worked per Week",xlab="Hours worked per week",col = "blue")
+boxplot(data$`hours-per-week`,main="Hours Worked per Week")
+
+```
+
+7. Fine the Correlation between numerical attributes.
+
+```{r}
+#Changing income to 0 <= 50k, 1 > 50k
+
+data1 <- data
+data1$income <- as.numeric(data1$income)-1
+#Correlation plot
+M <- c(1, 3, 5, 11:13, 15)
+corrplot(cor(data1[,M]),method = "number")
+
+##########################################################
+# Correlations shows that numeric attributes are related #
+# but are not strongly correlated. The variables are positively
+# correlated. Education has the highest correlation 0.33 with income.
+# Capital gain 0.22, age 0.24 and hours worked 0.23. The variables are positively correlted 
+# with each other.
+##########################################################
+```
+
+Saving the clean test and train data  in testdata.csv and traindata.csv respectively.
+```{r}
+traindata <- data
+testdata  <- testingdata
+
+write.csv(traindata, "traindata.csv", row.names = FALSE)
+write.csv(testdata, "testdata.csv", row.names = FALSE)
+
+
+```
+
+```{r}
+model <- glm(income ~ age+ workclass+ education+`marital-status`+ occupation+ sex +`hours-per-week`, data = traindata, family = binomial('logit'))
+summary(model)
+
+predicttrain <- predict(model,traindata,type='response')
+pred1 <- rep('<=50K', length(predicttrain))
+pred1[predicttrain>=.5] <- '>50K'
+tb1 <- table(pred1, traindata$income)
+tb1
+
+```
