@@ -1,0 +1,364 @@
+---
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+CKME 136 Final Project
+Shabbir Yousuf Ali
+#syali@ryerson.ca
+#https://github.com/shabbiryousufali/CKME136
+Winter 2019
+
+---
+title: "Adult Income Data Project"
+output: word_document
+
+---
+1. Load requied libraries.
+Install package install.packages("caret")
+Install package install.packages("corrplot")
+Install package install.packages('Boruta')
+
+
+```{r library}
+library(ggplot2)
+library(corrplot)
+library(Boruta)
+
+library(randomForest)
+library(ROCR)
+library(caret)
+library(rpart)
+```
+
+2. Load data.
+```{r}
+setwd("C:/Ryerson/ckme136/project/rawdata")
+loc<-getwd()
+censusdata <- read.csv(file="adult.data",header=TRUE,sep=",", na.string = "?")
+
+#Add header to the columns
+names(censusdata) <- c('age',
+    'workclass',
+    'fnlwgt',
+    'education',
+    'educationnum',
+    'maritalstatus',
+    'occupation',
+    'relationship',
+    'race',
+    'sex',
+    'capitalgain',
+    'capitalloss',
+    'hoursperweek',
+    'nativecountry',
+    'income')
+```
+
+2.1. Split the data into train and test data. 
+```{r}
+inTrain <- createDataPartition(y=censusdata$income, p= 0.75, list=FALSE)
+training <- censusdata[inTrain,]
+testing <- censusdata[-inTrain,]
+```
+
+
+3. Display dimensions, summary of data, names and overall structure of the data.
+
+```{r }
+data <- training
+dim(data)
+nrow(data)
+ncol(data)
+dim(testing)
+summary(data)
+names(data)
+str(data)
+```
+
+
+4. Display Class Distributions.
+```{r}
+# Use the ggplot to find the income distribution <=50K VS >50K based on the training data
+result = summary(data$income)/nrow(data) * 100
+ggplot(data=data,aes(income)) + geom_bar(aes(fill = income), color = "black")
+result 
+```
+
+
+5. Check and remove the missing values.
+
+```{r}
+cat("Missing values in training set:", sum(is.na(data)), "\n")
+na_count <-sapply(data, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count
+nrow(data)
+data <- na.omit(data)
+nrow(data)
+nrow(testing)
+cat("Missing values in testing set:", sum(is.na(testing)), "\n")
+na_count1 <-sapply(testing, function(y) sum(length(which(is.na(y)))))
+na_count1
+testingdata <- na.omit(testing)
+nrow(testingdata)
+
+```
+5.1 Re-factoring the work class, occupation and native country after removing the NA values (exclude levels not required).
+
+```{r}
+data$workclass <- factor(data$workclass)
+data$occupation <- factor(data$occupation)
+data$native.country <- factor(data$nativecountry)
+```
+
+5.1 Re-factoring the work class, occupation and native country after removing the NA values (exclude levels not required) for testing data also.
+```{r}
+
+testingdata$workclass <- factor(testingdata$workclass)
+testingdata$occupation <- factor(testingdata$occupation)
+testingdata$native.country <- factor(testingdata$nativecountry)
+```
+
+
+
+6. Statistics of Numerical attributes
+
+```{r}
+#find the Min, Max, Mean, Median, 1st and 3rd Quarter of the numerical attributes
+summary(data$age)
+summary(data$educationnum)
+summary(data$capitalgain)
+summary(data$capitalloss)
+summary(data$hoursperweek)
+
+# statistics of numerical attributes
+summary(data$age)
+sd(data$age)
+hist(data$age, main = "Age Distribution",xlab = "Individual Age" ,col ="blue")
+boxplot(data$age,main="Age ")
+summary(data$education.num)
+sd(data$education.num)
+hist(data$educationnum,main = "Education Distribution",xlab="Education in Years (yrs)",col = "blue")
+boxplot(data$educationnum,main="Education")
+summary(data$capitalgain)
+sd(data$capitalgain)
+hist(data$capitalgain,main = "Capital Gain Distribution",xlab="Capital Gain",col = "blue")
+boxplot(data$capitalgain,main="Capital Gain")
+summary(data$capitalloss)
+sd(data$capitalloss)
+hist(log10(data$capitalloss),main = "Distribution of Capital Loss",xlab="Capital Loss",col = "blue")
+boxplot(data$capitalloss,main="Capital Loss")
+summary(data$hoursperweek)
+sd(data$`hours.per.week`)
+hist(data$hoursperweek,main = "Distribution of Hours Worked per Week",xlab="Hours worked per week",col = "blue")
+boxplot(data$hoursperweek,main="Hours Worked per Week")
+
+```
+
+7a. Find the Correlation between numerical attributes.
+
+```{r}
+#Changing income to 0 <= 50k, 1 > 50k
+
+data1 <- data
+data1$income <- as.numeric(data1$income)-1
+#Correlation plot
+M <- c(1, 3, 5, 11:13, 15)
+corrplot(cor(data1[,M]),method = "number")
+
+##########################################################
+# Correlations shows that numeric attributes are related but are not strongly correlated. 
+# Education has the highest correlation 0.33 with income followed by 
+# Capital gain 0.22, age 0.24 and hours worked 0.23. 
+# The variables are positively correlted with each other.
+##########################################################
+```
+
+7b. Find the Correlation between categorical attributes with numerical attribute (income)
+```{r}
+#based on the Education level
+ggplot(data, aes(x=data$education,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+
+# Result shows adults with higher education has earning > 50K
+# Adults with Bachelors degree have maximum number of earnings > 50K, followed by doctorate and masters
+# Adults with lower education level have maximum portion of income <= 50K
+
+```
+
+```{r}
+#based on the sex
+ggplot(data, aes(x=data$sex,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+
+#Result shows the ratio of male earning income > 50K is more than female
+```
+
+```{r}
+#based on the race
+ggplot(data, aes(x=data$race,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+#Result shows the highest earning adults are white followed by Black and Asia pacific
+
+```
+
+```{r}
+#based on the marital status and relationship
+
+ggplot(data, aes(x=data$maritalstatus,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+
+ggplot(data, aes(x=data$relationship,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired")
+
+#Results in both the graphs show that Male and married people are earning more than 50K, as compared to female and unmarried people
+```
+
+```{r}
+#based on the occupation
+ggplot(data, aes(x=data$occupation,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+
+#Result shows adults with higher position like Manager, Professor are earning > 50K
+```
+
+```{r}
+#based on the work class
+ggplot(data, aes(x=data$workclass,fill=data$income)) + geom_bar(position = "stack", color = "black") + ggtitle('    Income Levels in different Work Class')+ theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7))  + scale_fill_brewer(palette="Paired") 
+
+#Result shows adults in private sector have maximum number of earning of > 50K
+```
+
+```{r}
+ggplot(data, aes(x=data$nativecountry,fill=data$income)) + geom_bar(position = "stack", color = "black") + theme(axis.text.x=element_text(angle = 70 , hjust= 1, size=7)) + scale_fill_brewer(palette="Paired") 
+
+#Result shows marjority of the adults belongs to the United States
+```
+
+Save the clean test and train data testdata.csv and traindata.csv files respectively.
+```{r}
+traindata <- data
+testdata  <- testingdata
+
+write.csv(traindata, "traindata.csv", row.names = FALSE)
+write.csv(testdata, "testdata.csv", row.names = FALSE)
+
+```
+
+Now we predict the data based on the traindata
+```{r}
+model <- glm(income ~ age+ workclass+ education+maritalstatus+ occupation+ sex +hoursperweek, data = traindata, family = binomial('logit'))
+summary(model)
+
+predicttrain <- predict(model,traindata,type='response')
+pred1 <- rep('<=50K', length(predicttrain))
+pred1[predicttrain>=.5] <- '>50K'
+tb1 <- table(pred1, traindata$income)
+tb1
+
+```
+
+Apply different algorithm to predict the results using train and test data 
+
+1) DECISION TREE
+```{r}
+Dectree<- rpart(income~ age+ workclass+ education+maritalstatus+ occupation+ sex +hoursperweek, data = traindata, method='class',cp =1e-3)
+
+#Result using traindata
+Dectree.Ptrain <- predict(Dectree,newdata= traindata, type = 'class')
+confusionMatrix(traindata$income,Dectree.Ptrain)
+
+#Result using testdata
+Dectree.pred.prob <- predict(Dectree, newdata = testdata, type = 'prob')
+Dectree.pred <- predict(Dectree, newdata = testdata, type = 'class')
+confusionMatrix(testdata$income,Dectree.pred)
+```
+
+2) RANDOM FOREST
+```{r}
+library(randomForest)
+levels(testdata$workclass) <- levels(traindata$workclass)
+randforest <- randomForest(income ~ age+ workclass+ education+maritalstatus+occupation+ sex+hoursperweek, data = traindata, ntree = 500)
+randforest.pred.prob <- predict(randforest, newdata = testdata, type = 'prob')
+randforest.pred <- predict(randforest, newdata = testdata, type = 'class')
+
+# confusion matrix 
+tb3 <- table(randforest.pred, testdata$income)
+tb3
+confusionMatrix(testdata$income,randforest.pred)
+varImpPlot (randforest)
+```
+
+
+
+3) LINEAR REGRESION
+```{r}
+linReg <- glm(income ~ age+ workclass+ education+maritalstatus+ occupation+ sex +hoursperweek, data = traindata, family = binomial('logit'))
+summary(linReg)
+
+
+predictiontrain <- predict(linReg,traindata,type='response')
+pred1 <- rep('<=50K', length(predictiontrain))
+pred1[predictiontrain>=.5] <- '>50K'
+tb1 <- table(pred1, traindata$income)
+tb1
+
+
+prob <- predict(linReg, testdata, type = 'response')
+prediction <- predict(linReg,testdata,type='response')
+
+########################################################################
+# P values shows that Age ,workclass, education, marital status, occupation,
+# race, sex, hours per week  are the significant attributes.
+########################################################################
+pred <- rep('<=50K', length(prob))
+pred[prob>=.5] <- '>50K'
+tb <- table(pred, testdata$income)
+tb
+
+
+# Confusion matrix shows that it has an Accuracy of 83.01%
+# misclasification 17%.
+```
+
+
+Finally we have to compare the the Algorithm
+```{r}
+
+###DECISION TREE
+prtree <- prediction(Dectree.pred.prob[,2],testdata$income)
+perftree  <- performance(prtree,measure="tpr",x.measure="fpr")
+DTFrametree <- data.frame(FP=perftree@x.values[[1]],TP=perftree@y.values[[1]])
+auctree <- performance(prtree, measure='auc')@y.values[[1]]
+auctree
+
+###RANDOM FOREST
+prRForest <- prediction(randforest.pred.prob[,2],testdata$income)
+perfRForest  <- performance(prRForest,measure="tpr",x.measure="fpr")
+DTFrameRForest <- data.frame(FP=perfRForest@x.values[[1]],TP=perfRForest@y.values[[1]])
+aucFtree <- performance(prRForest, measure='auc')@y.values[[1]]
+aucFtree
+
+## LINEAR REGRESION
+pr  <- prediction(prob,testdata$income)
+perf <- performance(pr,measure="tpr", x.measure="fpr")
+DtFrameReg <- data.frame(FP=perf@x.values[[1]],TP=perf@y.values[[1]])
+aucRegresion <- performance(pr,measure='auc')@y.values[[1]]
+aucRegresion
+```  
+
+
+Use of ROC curve
+```{r}
+g <- ggplot() + 
+  geom_line(data = DTFrametree, aes(x = FP, y = TP, color = 'Decision Tree')) + 
+  geom_line(data = DTFrameRForest, aes(x = FP, y = TP, color = 'Random Forest')) + 
+  geom_line(data = DtFrameReg, aes(x = FP, y = TP, color = 'Linear Regression')) + 
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1)) +
+  ggtitle('ROC Curve') + 
+  labs(x = 'False Positive Rate', y = 'True Positive Rate') 
+
+g +  scale_colour_manual(name = 'Classifier', values = c('Decision Tree'='#5674E9', 'Random Forest'='#009E73', 'Linear Regression'='#E63F00'))
+
+auc <- rbind(aucRegresion,auctree,aucFtree)
+rownames(auc) <- (c('Decision Tree', 'Random Forest', 'Linear Regression'))
+colnames(auc) <- 'ROC Curve Area'
+round(auc, 6)
+
+```
